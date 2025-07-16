@@ -4,11 +4,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
+	"sync"
 
 	"github.com/charmbracelet/huh"
-	"github.com/geavenx/smnh/cmd"
+	"github.com/geavenx/smnh/internal/lfm"
 )
 
 var (
@@ -22,6 +24,7 @@ var (
 	period    string
 
 	prompt bool
+	debug  bool
 )
 
 func main() {
@@ -40,6 +43,7 @@ func main() {
 	flag.StringVar(&method, "method", "album", "[album, artist, track]")
 	flag.StringVar(&period, "period", "7day", "[overall, 7day, 1month, 6month, 12month]")
 	flag.BoolVar(&prompt, "p", false, "Use prompt to define collage settings")
+	flag.BoolVar(&debug, "debug", false, "Enable debug logging")
 
 	flag.Parse()
 
@@ -48,6 +52,17 @@ func main() {
 		flag.Usage()
 		os.Exit(2)
 	}
+
+	opts := &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}
+
+	if debug {
+		opts.Level = slog.LevelDebug
+	}
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, opts))
+	slog.SetDefault(logger)
 
 	if prompt {
 		form := huh.NewForm(
@@ -134,5 +149,31 @@ func main() {
 		}
 	}
 
-	cmd.Request(cmd.CollageRequest{Rows: rows, Columns: columns, Artist: artist, Playcount: playcount, Username: username, Period: period, Method: method, Album: album})
+	// cmd.Request(cmd.CollageRequest{Rows: rows, Columns: columns, Artist: artist, Playcount: playcount, Username: username, Period: period, Method: method, Album: album})
+	topAlbums := lfm.FetchTopAlbums(lfm.TopAlbumRequest{Username: username, Period: lfm.Period7Day, Limit: 16})
+
+	slog.Debug("fetch topAlbums DONE", "topAlbums", topAlbums)
+
+	var imageUrls []string
+
+	for _, album := range topAlbums {
+		imageUrls = append(imageUrls, album.Images[3].Url)
+	}
+
+	var wg sync.WaitGroup
+
+	dir, err := os.MkdirTemp("", "images")
+	if err != nil {
+		slog.Error("Error creating temp directory", "error", err)
+	}
+	defer os.RemoveAll(dir)
+
+	for _, url := range imageUrls {
+		wg.Add(1)
+		go lfm.FetchImage(url, dir, &wg)
+	}
+
+	wg.Wait() // Wait for all goroutines
+	slog.Info("done")
+
 }

@@ -2,14 +2,35 @@ package lfm
 
 import (
 	"encoding/xml"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
+	"path"
+	"strconv"
+	"sync"
 
 	"github.com/joho/godotenv"
 )
+
+type Period string
+
+const (
+	PeriodOverall Period = "overall"
+	Period7Day    Period = "7day"
+	Period1Month  Period = "1month"
+	Period3Month  Period = "3month"
+	Period6Month  Period = "6month"
+	Period12Month Period = "12month"
+)
+
+type TopAlbumRequest struct {
+	Username string
+	Period   Period
+	Limit    int
+}
 
 type TopAlbumResponse struct {
 	XMLName   xml.Name `xml:"lfm"`
@@ -41,18 +62,7 @@ type Image struct {
 	Url     string   `xml:",chardata"`
 }
 
-type Period string
-
-const (
-	PeriodOverall Period = "overall"
-	Period7Day    Period = "7day"
-	Period1Month  Period = "1month"
-	Period3Month  Period = "3month"
-	Period6Month  Period = "6month"
-	Period12Month Period = "12month"
-)
-
-func FetchTopAlbums(user string, period Period, limit string) []Album {
+func FetchTopAlbums(req TopAlbumRequest) []Album {
 	if err := godotenv.Load(); err != nil {
 		slog.Error("error loading .env", "error", err)
 	}
@@ -67,10 +77,10 @@ func FetchTopAlbums(user string, period Period, limit string) []Album {
 
 	params := map[string]string{
 		"method":  "user.getTopAlbums",
-		"user":    user,
+		"user":    req.Username,
 		"api_key": apiKey,
-		"period":  string(period),
-		"limit":   limit,
+		"period":  string(req.Period),
+		"limit":   strconv.Itoa(req.Limit),
 	}
 
 	q := url.Values{}
@@ -80,6 +90,7 @@ func FetchTopAlbums(user string, period Period, limit string) []Album {
 
 	apiUrl.RawQuery = q.Encode()
 
+	slog.Debug("Sending request", "method", "user.getTopAlbums", "url", apiUrl.String())
 	resp, err := http.Get(apiUrl.String())
 	if err != nil {
 		slog.Error("Failed to execute request", "error", err)
@@ -104,4 +115,32 @@ func FetchTopAlbums(user string, period Period, limit string) []Album {
 	}
 
 	return topAlbumsResp.TopAlbums.Albums
+}
+
+func FetchImage(imageUrl string, directory string, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	resp, err := http.Get(imageUrl)
+	if err != nil {
+		slog.Error("Error fetching", "url", imageUrl, "error", err)
+		return
+	}
+
+	defer resp.Body.Close()
+	fmt.Printf("%s - Status: %s\n", imageUrl, resp.Status)
+
+	filename := path.Join(directory, path.Base(resp.Request.URL.Path))
+	out, err := os.Create(filename)
+	if err != nil {
+		slog.Error("Error creating image file", "error", err)
+		return
+	}
+
+	defer out.Close()
+
+	if _, err = io.Copy(out, resp.Body); err != nil {
+		slog.Error("Error copying response image to created file", "error", err)
+		return
+	}
+	fmt.Printf("Image saved: %s\n", filename)
 }
