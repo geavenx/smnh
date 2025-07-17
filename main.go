@@ -200,7 +200,15 @@ func main() {
 	var imageFilenames []string
 	for res := range results {
 		if res.Err != nil {
-			slog.Error("Error fetching image", "error", res.Err, "filename", res.Filename)
+			slog.Warn("Error fetching image", "error", res.Err, "filename", res.Filename)
+			filename, err := images.GenerateNotFoundImg(dir)
+			if err != nil {
+				slog.Error("Error generating 'not found' image", "error", err)
+			} else {
+				slog.Info("Not found image generated succesfully", "filename", filename)
+				imageFilenames = append(imageFilenames, filename)
+			}
+			// TODO: GENERATE "NOT FOUND" IMAGE HERE
 		} else {
 			slog.Info("Image fetched", "filename", res.Filename)
 			imageFilenames = append(imageFilenames, res.Filename)
