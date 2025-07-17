@@ -2,7 +2,6 @@ package lfm
 
 import (
 	"encoding/xml"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -132,7 +131,6 @@ func FetchImage(imageUrl string, directory string, wg *sync.WaitGroup) (string, 
 	}
 
 	defer resp.Body.Close()
-	fmt.Printf("%s - Status: %s\n", imageUrl, resp.Status)
 
 	filename := path.Join(directory, path.Base(resp.Request.URL.Path))
 	out, err := os.Create(filename)
@@ -147,7 +145,6 @@ func FetchImage(imageUrl string, directory string, wg *sync.WaitGroup) (string, 
 		slog.Error("Error copying response image to created file", "error", err)
 		return "", err
 	}
-	fmt.Printf("Image saved: %s\n", filename)
 
 	return filename, nil
 }
