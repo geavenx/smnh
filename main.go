@@ -10,21 +10,9 @@ import (
 	"sync"
 
 	"github.com/charmbracelet/huh"
+	"github.com/geavenx/smnh/internal/collage"
+	images "github.com/geavenx/smnh/internal/image"
 	"github.com/geavenx/smnh/internal/lfm"
-)
-
-var (
-	username  string
-	rows      string
-	columns   string
-	artist    bool
-	album     bool
-	playcount bool
-	method    string
-	period    string
-
-	prompt bool
-	debug  bool
 )
 
 func main() {
@@ -34,17 +22,18 @@ func main() {
 		flag.PrintDefaults()
 	}
 
-	flag.StringVar(&username, "u", "", "Last.fm username (required)")
-	flag.StringVar(&rows, "rows", "5", "Number of rows to display")
-	flag.StringVar(&columns, "cols", "5", "Number of columns to display")
-	flag.BoolVar(&artist, "artist", true, "Display artist")
-	flag.BoolVar(&album, "album", true, "Display album")
-	flag.BoolVar(&playcount, "playcount", false, "Display playcount")
-	flag.StringVar(&method, "method", "album", "[album, artist, track]")
-	flag.StringVar(&period, "period", "7day", "[overall, 7day, 1month, 6month, 12month]")
-	flag.BoolVar(&prompt, "p", false, "Use prompt to define collage settings")
-	flag.BoolVar(&debug, "debug", false, "Enable debug logging")
-
+	var (
+		username  = flag.String("u", "", "Last.fm username (required)")
+		rows      = flag.String("rows", "5", "Number of rows to display")
+		columns   = flag.String("cols", "5", "Number of columns to display")
+		artist    = flag.Bool("artist", true, "Display artist")
+		album     = flag.Bool("album", true, "Display album")
+		playcount = flag.Bool("playcount", false, "Display playcount")
+		method    = flag.String("method", "album", "[album, artist, track]")
+		period    = flag.String("period", "7day", "[overall, 7day, 1month, 6month, 12month]")
+		prompt    = flag.Bool("p", false, "Use prompt to define collage settings")
+		debug     = flag.Bool("debug", false, "Enable debug logging")
+	)
 	flag.Parse()
 
 	if flag.NArg() > 0 {
@@ -57,19 +46,19 @@ func main() {
 		Level: slog.LevelInfo,
 	}
 
-	if debug {
+	if *debug {
 		opts.Level = slog.LevelDebug
 	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, opts))
 	slog.SetDefault(logger)
 
-	if prompt {
+	if *prompt {
 		form := huh.NewForm(
 			huh.NewGroup(
 				huh.NewInput().
 					Title("username").
-					Value(&username).
+					Value(username).
 					Validate(func(s string) error {
 						if s == "" {
 							return errors.New("username cannot be empty")
@@ -78,7 +67,7 @@ func main() {
 					}),
 				huh.NewInput().
 					Title("rows").
-					Value(&rows).
+					Value(rows).
 					Prompt("[1 - 20]: ").
 					Validate(func(s string) error {
 						if s == "" {
@@ -97,7 +86,7 @@ func main() {
 					}),
 				huh.NewInput().
 					Title("columns").
-					Value(&columns).
+					Value(columns).
 					Prompt("[1 - 20]: ").
 					Validate(func(s string) error {
 						if s == "" {
@@ -117,20 +106,20 @@ func main() {
 
 				huh.NewConfirm().
 					Title("Display Artist").
-					Value(&artist),
+					Value(artist),
 				huh.NewConfirm().
 					Title("Display Album").
-					Value(&album),
+					Value(album),
 				huh.NewConfirm().
 					Title("Display Playcount").
-					Value(&playcount),
+					Value(playcount),
 
 				huh.NewSelect[string]().Title("method").
 					Options(
 						huh.NewOption("Album", "album"),
 						huh.NewOption("Artist", "artist"),
 						huh.NewOption("Track", "track"),
-					).Value(&method),
+					).Value(method),
 				huh.NewSelect[string]().Title("period").
 					Options(
 						huh.NewOption("Overall", "overall"),
@@ -138,7 +127,7 @@ func main() {
 						huh.NewOption("1 Month", "1month"),
 						huh.NewOption("6 Month", "6month"),
 						huh.NewOption("1 Year", "12month"),
-					).Value(&period),
+					).Value(period),
 			),
 		)
 
@@ -149,31 +138,114 @@ func main() {
 		}
 	}
 
-	// cmd.Request(cmd.CollageRequest{Rows: rows, Columns: columns, Artist: artist, Playcount: playcount, Username: username, Period: period, Method: method, Album: album})
-	topAlbums := lfm.FetchTopAlbums(lfm.TopAlbumRequest{Username: username, Period: lfm.Period7Day, Limit: 16})
-
-	slog.Debug("fetch topAlbums DONE", "topAlbums", topAlbums)
-
-	var imageUrls []string
-
-	for _, album := range topAlbums {
-		imageUrls = append(imageUrls, album.Images[3].Url)
+	// Convert period string to Period type
+	var periodType lfm.Period
+	switch *period {
+	case "overall":
+		periodType = lfm.PeriodOverall
+	case "7day":
+		periodType = lfm.Period7Day
+	case "1month":
+		periodType = lfm.Period1Month
+	case "3month":
+		periodType = lfm.Period3Month
+	case "6month":
+		periodType = lfm.Period6Month
+	case "12month":
+		periodType = lfm.Period12Month
+	default:
+		periodType = lfm.Period7Day
 	}
 
-	var wg sync.WaitGroup
+	rowsInt, _ := strconv.Atoi(*rows)
+	colsInt, _ := strconv.Atoi(*columns)
+	totalImages := rowsInt * colsInt
+	topAlbums := lfm.FetchTopAlbums(lfm.TopAlbumRequest{Username: *username, Period: periodType, Limit: totalImages})
+	slog.Debug("fetch topAlbums DONE", "topAlbums", topAlbums)
 
+	// Create temp directory for images
 	dir, err := os.MkdirTemp("", "images")
 	if err != nil {
 		slog.Error("Error creating temp directory", "error", err)
 	}
 	defer os.RemoveAll(dir)
 
-	for _, url := range imageUrls {
-		wg.Add(1)
-		go lfm.FetchImage(url, dir, &wg)
-	}
+	var wg sync.WaitGroup
+	results := make(chan lfm.ImageResult, len(topAlbums))
 
-	wg.Wait() // Wait for all goroutines
+	for _, album := range topAlbums {
+		wg.Add(1)
+
+		// For each album in the topAlbums range run an asynchronous web request to download the image file to temp dir
+
+		go func(url string, dir string) {
+			filename, err := lfm.FetchImage(url, dir, &wg)
+			results <- lfm.ImageResult{Filename: filename, Err: err}
+		}(album.Images[3].Url, dir)
+	}
+	wg.Wait() // Wait for all goroutines to be done
+
+	close(results) // Close the channel
 	slog.Info("done")
 
+	generator := collage.NewCollageGenerator(collage.Config{
+		Width:   colsInt * 300,
+		Height:  rowsInt * 300,
+		Rows:    rowsInt,
+		Columns: colsInt,
+		Quality: 90,
+	})
+
+	// Collect successful image filenames
+	var imageFilenames []string
+	for res := range results {
+		if res.Err != nil {
+			slog.Error("Error fetching image", "error", res.Err, "filename", res.Filename)
+		} else {
+			slog.Info("Image fetched", "filename", res.Filename)
+			imageFilenames = append(imageFilenames, res.Filename)
+		}
+	}
+
+	// Load images and add to collage generator
+	var imageWg sync.WaitGroup
+	for _, filename := range imageFilenames {
+		imageWg.Add(1)
+		go func(filename string) {
+			img, err := images.LoadImage(filename, &imageWg)
+			if err != nil {
+				slog.Error("Error loading image", "filename", filename, "error", err)
+				return
+			}
+
+			// Resize image to 300x300 for collage
+			resizedImg := images.ResizeImage(img, 300, 300)
+
+			err = generator.AddImage(resizedImg)
+			if err != nil {
+				slog.Error("Error adding image to collage", "filename", filename, "error", err)
+			}
+		}(filename)
+	}
+
+	imageWg.Wait()
+
+	// Generate the collage
+	slog.Info("Generating collage...")
+	collageImg, err := generator.Generate()
+	if err != nil {
+		slog.Error("Error generating collage", "error", err)
+		os.Exit(2)
+	}
+
+	// Save the collage
+	outputFilename := fmt.Sprintf("%s_collage.png", *username)
+	err = images.SaveImage(collageImg, outputFilename, "png")
+	if err != nil {
+		slog.Error("Error saving collage", "filename", outputFilename, "error", err)
+		os.Exit(2)
+	}
+
+	slog.Info("Collage generated successfully", "filename", outputFilename)
+	fmt.Printf("Collage saved as: %s\n", outputFilename)
 }
