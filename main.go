@@ -208,7 +208,6 @@ func main() {
 				slog.Info("Not found image generated succesfully", "filename", filename)
 				imageFilenames = append(imageFilenames, filename)
 			}
-			// TODO: GENERATE "NOT FOUND" IMAGE HERE
 		} else {
 			slog.Info("Image fetched", "filename", res.Filename)
 			imageFilenames = append(imageFilenames, res.Filename)
