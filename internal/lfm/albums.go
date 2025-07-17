@@ -62,6 +62,11 @@ type Image struct {
 	Url     string   `xml:",chardata"`
 }
 
+type ImageResult struct {
+	Filename string
+	Err      error
+}
+
 func FetchTopAlbums(req TopAlbumRequest) []Album {
 	if err := godotenv.Load(); err != nil {
 		slog.Error("error loading .env", "error", err)
@@ -117,13 +122,13 @@ func FetchTopAlbums(req TopAlbumRequest) []Album {
 	return topAlbumsResp.TopAlbums.Albums
 }
 
-func FetchImage(imageUrl string, directory string, wg *sync.WaitGroup) {
+func FetchImage(imageUrl string, directory string, wg *sync.WaitGroup) (string, error) {
 	defer wg.Done()
 
 	resp, err := http.Get(imageUrl)
 	if err != nil {
 		slog.Error("Error fetching", "url", imageUrl, "error", err)
-		return
+		return "", err
 	}
 
 	defer resp.Body.Close()
@@ -133,14 +138,16 @@ func FetchImage(imageUrl string, directory string, wg *sync.WaitGroup) {
 	out, err := os.Create(filename)
 	if err != nil {
 		slog.Error("Error creating image file", "error", err)
-		return
+		return "", err
 	}
 
 	defer out.Close()
 
 	if _, err = io.Copy(out, resp.Body); err != nil {
 		slog.Error("Error copying response image to created file", "error", err)
-		return
+		return "", err
 	}
 	fmt.Printf("Image saved: %s\n", filename)
+
+	return filename, nil
 }
