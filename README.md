@@ -4,7 +4,7 @@ A CLI tool to generate music collages from your Last.fm scrobbling history.
 
 ## Features
 
-- Generate album art collages from your Last.fm top albums
+- Generate album art collages from your Last.fm top albums (artists/tracks WIP)
 - Interactive prompt mode or command-line flags
 - Customizable grid size (rows/columns)
 - Multiple time periods (7 days, 1 month, 6 months, 1 year, overall)
