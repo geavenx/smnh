@@ -14,19 +14,8 @@ import (
 	"github.com/joho/godotenv"
 )
 
-type Period string
-
-const (
-	PeriodOverall Period = "overall"
-	Period7Day    Period = "7day"
-	Period1Month  Period = "1month"
-	Period3Month  Period = "3month"
-	Period6Month  Period = "6month"
-	Period12Month Period = "12month"
-)
-
 type TopAlbumRequest struct {
-	Username string
+	Username string `json:"username"`
 	Period   Period
 	Limit    int
 }
@@ -51,19 +40,7 @@ type Album struct {
 type TopAlbum struct {
 	XMLName xml.Name `xml:"topalbums"`
 	User    string   `xml:"user,attr"`
-	Type    string   `xml:"type,attr"`
 	Albums  []Album  `xml:"album"`
-}
-
-type Image struct {
-	XMLName xml.Name `xml:"image"`
-	Size    string   `xml:"size,attr"`
-	Url     string   `xml:",chardata"`
-}
-
-type ImageResult struct {
-	Filename string
-	Err      error
 }
 
 func FetchTopAlbums(req TopAlbumRequest) []Album {

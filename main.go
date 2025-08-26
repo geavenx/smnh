@@ -160,8 +160,19 @@ func main() {
 	rowsInt, _ := strconv.Atoi(*rows)
 	colsInt, _ := strconv.Atoi(*columns)
 	totalImages := rowsInt * colsInt
-	topAlbums := lfm.FetchTopAlbums(lfm.TopAlbumRequest{Username: *username, Period: periodType, Limit: totalImages})
-	slog.Debug("fetch topAlbums DONE", "topAlbums", topAlbums)
+
+	switch *method {
+	case "album":
+		res := lfm.RequestLfm(lfm.LfmRequest{Method: "user.getTopAlbums", Username: *username, Period: periodType, Limit: totalImages})
+		top = lfm.FetchTopAlbums(lfm.TopAlbumRequest{Username: *username, Period: periodType, Limit: totalImages})
+		slog.Debug("fetch top DONE", "top", top)
+	case "artist":
+		top = lfm.FetchTopArtists(lfm.TopArtistRequest{Username: *username, Period: periodType, Limit: totalImages})
+		slog.Debug("fetch topArtists DONE", "top", top)
+	default:
+		top = lfm.FetchTopAlbums(lfm.TopAlbumRequest{Username: *username, Period: periodType, Limit: totalImages})
+		slog.Debug("fetch top DONE", "top", top)
+	}
 
 	// Create temp directory for images
 	dir, err := os.MkdirTemp("", "images")
@@ -171,12 +182,12 @@ func main() {
 	defer os.RemoveAll(dir)
 
 	var wg sync.WaitGroup
-	results := make(chan lfm.ImageResult, len(topAlbums))
+	results := make(chan lfm.ImageResult, len(top))
 
-	for _, album := range topAlbums {
+	for _, album := range top {
 		wg.Add(1)
 
-		// For each album in the topAlbums range run an asynchronous web request to download the image file to temp dir
+		// For each album in the top range run an asynchronous web request to download the image file to temp dir
 
 		go func(url string, dir string) {
 			filename, err := lfm.FetchImage(url, dir, &wg)
